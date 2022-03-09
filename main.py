@@ -59,6 +59,7 @@ def loss_func(s, t, k, c):
 
     return optimize.fmin(find_sigma, 10)
 
+
 # print(loss_func(566.82, 3/252, dt['Strike'],dt['Mid']))
 
 # Market Days Calculation
@@ -69,16 +70,26 @@ def time(t1, t2):
     return len(t) / 252
 
 
-# %% Iu Calculation
-dt = pd.read_excel(r'/Users/binglianluo/Desktop/Spring2022/Practicum/TSLAtest3.xlsx')
+# %% Data Import
+dt = pd.read_excel(r'/Users/binglianluo/Desktop/Spring2022/Practicum/AMZNtest1.xlsx')
 K = np.append(0, dt['Strike'])
 K = np.append(K, 10000)
 V = np.zeros(len(dt['Strike']))
 u = 0
 h = 0
-S0 = 566.82
-sigma = 701.8359375 * np.sqrt(3 / 252)
+S0 = 2720.29
+t = time('2022-03-08', '2022-06-17')
+dt['Bid_IV'] = 0
+dt['Ask_IV'] = 0
+dt['Mid'] = (dt['Bid'] + dt['Ask']) / 2
+dt['Moneyness'] = 0
+sigma = loss_func(2720.29, t, dt['Strike'], dt['Mid']) * np.sqrt(t)
 
+
+# print(loss_func(2720.29, t, dt['Strike'],dt['Mid']))
+
+
+# %% Iu Calculation
 
 def cal_Iu(V, h):
     A = (K[0] - S0) / sigma
@@ -96,7 +107,8 @@ def cal_Iu(V, h):
     return sum
 
 
-print(cal_Iu(V, h))
+u = np.log(cal_Iu(V, h))
+print("u = ", u)
 
 
 # %% Ih Calculation
@@ -108,9 +120,9 @@ def solve_Ih(V):
         alpha = - h
         beta = h * S0
         sum = np.exp(beta) * \
-              (2 * sigma * np.exp(alpha * S0) \
-               * (np.exp(A * alpha * sigma - A ** 2 / 2) - np.exp(B * alpha * sigma - B ** 2 / 2)) + \
-               np.sqrt(2 * np.pi) * alpha * sigma ** 2 * np.exp((alpha * sigma) ** 2 / 2 + alpha * S0) * \
+              (2 * sigma * np.exp(alpha * S0)
+               * (np.exp(A * alpha * sigma - A ** 2 / 2) - np.exp(B * alpha * sigma - B ** 2 / 2)) +
+               np.sqrt(2 * np.pi) * alpha * sigma ** 2 * np.exp((alpha * sigma) ** 2 / 2 + alpha * S0) *
                (erf((B - alpha * sigma) / np.sqrt(2)) - erf((A - alpha * sigma) / np.sqrt(2))))
         # print (sum)
         for k in range(0, len(dt['Strike'])):
@@ -119,9 +131,9 @@ def solve_Ih(V):
             alpha = -V[0:k + 1].sum() - h
             beta = (V[0:k + 1] * K[1:k + 2]).sum() + h * S0
             sum += np.exp(beta) * \
-                   (2 * sigma * np.exp(alpha * S0) \
-                    * (np.exp(A * alpha * sigma - A ** 2 / 2) - np.exp(B * alpha * sigma - B ** 2 / 2)) + \
-                    np.sqrt(2 * np.pi) * alpha * sigma ** 2 * np.exp((alpha * sigma) ** 2 / 2 + alpha * S0) * \
+                   (2 * sigma * np.exp(alpha * S0)
+                    * (np.exp(A * alpha * sigma - A ** 2 / 2) - np.exp(B * alpha * sigma - B ** 2 / 2)) +
+                    np.sqrt(2 * np.pi) * alpha * sigma ** 2 * np.exp((alpha * sigma) ** 2 / 2 + alpha * S0) *
                     (erf((B - alpha * sigma) / np.sqrt(2)) - erf((A - alpha * sigma) / np.sqrt(2))))
             # print(sum / (2 * np.sqrt(2 * np.pi)))
         return sum / (2 * np.sqrt(2 * np.pi))
@@ -131,11 +143,11 @@ def solve_Ih(V):
     # return Ih(0)
 
 
-print(solve_Ih(V))
+v = solve_Ih(V)
+print("v = ", v)
 
 
 # %%
-# V = V/1000
 def Ik(h, V, K):
     V_k = np.zeros(len(V))
     for j in range(0, len(V)):
@@ -187,44 +199,43 @@ def g1_partial(V, u, h):
 
 print(g1_partial(V, u, h))
 
-
 # %%
-# def sum_f1(V):
-#     f = [0 for x in range(0, len(c_bid))]
-#     for i in range(0, len(f)):
-#         if (V[i] * w[i] >= delta_bid[i]) and (V[i] * w[i] <= delta_ask[i]):
-#             f[i] = V[i] ** 2 * w[i] / 2
-#         elif V[i] * w[i] > delta_ask[i]:
-#             f[i] = delta_ask[i] * V[i] - delta_ask[i] ** 2 / (2 * w[i])
-#         else:
-#             f[i] = delta_bid[i] * V[i] - delta_bid[i] ** 2 / (2 * w[i])
-#     return sum(f)
-#
-#
-# def g1(V):
-#     u = 0
-#     res = u + sum_f1(V) + sum(V * c_mid) + Iu(h, V, K) * np.exp(-u)
-#     return res
-#
-#
-# def g1_prime(V):
-#     return g1_partial(V, 0, 0)
-#
-#
-# print(fmin_bfgs(g1, np.zeros(len(dt['Strike']), fprime=g1_prime)))
+def sum_f1(V):
+    f = [0 for x in range(0, len(c_bid))]
+    for i in range(0, len(f)):
+        if (V[i] * w[i] >= delta_bid[i]) and (V[i] * w[i] <= delta_ask[i]):
+            f[i] = V[i] ** 2 * w[i] / 2
+        elif V[i] * w[i] > delta_ask[i]:
+            f[i] = delta_ask[i] * V[i] - delta_ask[i] ** 2 / (2 * w[i])
+        else:
+            f[i] = delta_bid[i] * V[i] - delta_bid[i] ** 2 / (2 * w[i])
+    return sum(f)
+
+
+def g1(V):
+    u = 0
+    res = u + sum_f1(V) + sum(V * c_mid) + cal_Iu(V, h) * np.exp(-u)
+    return res
+
+
+def g1_prime(V):
+    return g1_partial(V, 0, 0)
+
+
+print(fmin_bfgs(g1, np.ones(len(dt['Strike']))*0.001, fprime=g1_prime))
 
 # %% Update of V
-u = 0
-h = 0
-# V = np.zeros(len(dt['Strike']))
+# u = 0
+# h = 0
 V = np.zeros(len(dt['Strike']))
-D = np.eye(len(dt['Strike']))
-a = 0.0001
+# V = np.array(pd.read_excel('V.xlsx', header = None))[:,0]
+D = np.eye(len(dt['Strike'])) * 0.001
+a = 0.0005
 l = []
 
 from scipy.optimize import fmin_bfgs
 
-for i in range(0, 10):
+for i in range(0, 100):
     # while 1:
     d = -D @ np.transpose([g1_partial(V, u, h)])
     s = a * d
@@ -243,21 +254,21 @@ for i in range(0, 10):
         V = V_update
     else:
         break
+print(g1_partial(V_update, u, h))
 print(V)
 
 
 # %%
 def cpfgVlast(V):
     #########
-    u = 0
-    h = 0
+    # u = 0
+    # h = 0
 
-    #########
 
     # Remark4.3
     def alphafuncKlast(alpha, sigma, K1, K2, S0, K):
-        A = (K1 - S0) / sigma;
-        B = (K2 - S0) / sigma;
+        A = (K1 - S0) / sigma
+        B = (K2 - S0) / sigma
         out = np.exp(alpha * S0) / (2 * np.sqrt(2 * np.pi))
         one = 2 * sigma * np.exp(A * alpha * sigma - A ** 2 / 2)
         two = np.sqrt(2 * np.pi) * np.exp(alpha ** 2 * sigma ** 2 / 2) \
@@ -287,27 +298,20 @@ def cpfgVlast(V):
 print(cpfgVlast(V))
 
 # %% Implementation sample
-dt = pd.read_excel(r'/Users/binglianluo/Desktop/Spring2022/Practicum/TSLAtest3.xlsx')
-s = 566.82
-t = 3 / 252
-
-dt['Bid_IV'] = 0
-dt['Ask_IV'] = 0
-dt['Mid'] = (dt['Bid'] + dt['Ask']) / 2
-dt['Moneyness'] = 0
 dt['Model'] = cpfgVlast(V)
 for i in range(0, len(dt)):
-    dt.loc[i, 'Moneyness'] = s / dt.loc[i, 'Strike']
-    dt.loc[i, 'Bid_IV'] = iv_cal('c', s, dt.loc[i, 'Strike'], t, 0, dt.loc[i, 'Bid'])
-    dt.loc[i, 'Ask_IV'] = iv_cal('c', s, dt.loc[i, 'Strike'], t, 0, dt.loc[i, 'Ask'])
-    dt.loc[i, 'Mid_IV'] = iv_cal('c', s, dt.loc[i, 'Strike'], t, 0, dt.loc[i, 'Mid'])
-    dt.loc[i, 'Model_IV'] = iv_cal('c', s, dt.loc[i, 'Strike'], t, 0, dt.loc[i, 'Model'])
+    dt.loc[i, 'Moneyness'] = dt.loc[i, 'Strike'] / S0
+    dt.loc[i, 'Bid_IV'] = iv_cal('c', S0, dt.loc[i, 'Strike'], t, 0, dt.loc[i, 'Bid'])
+    dt.loc[i, 'Ask_IV'] = iv_cal('c', S0, dt.loc[i, 'Strike'], t, 0, dt.loc[i, 'Ask'])
+    dt.loc[i, 'Mid_IV'] = iv_cal('c', S0, dt.loc[i, 'Strike'], t, 0, dt.loc[i, 'Mid'])
+    dt.loc[i, 'Model_IV'] = iv_cal('c', S0, dt.loc[i, 'Strike'], t, 0, dt.loc[i, 'Model'])
 
 dt = dt[~dt['Bid_IV'].isin([0])]
 plt.scatter(dt['Moneyness'], dt['Ask_IV'], c='blue', marker='o', s=10)
 plt.scatter(dt['Moneyness'], dt['Bid_IV'], c='orange', marker='^', s=10)
 plt.plot(dt['Moneyness'], dt['Mid_IV'], c='purple')
 plt.plot(dt['Moneyness'], dt['Model_IV'], c='red')
-plt.ylim(1, 1.6)
+# plt.xlim(0.75, 1.2)
+plt.ylim(0.3, 0.6)
 plt.legend(labels=['Ask', 'Bid', 'Mid', 'Model'])
 plt.show()
