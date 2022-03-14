@@ -2,6 +2,7 @@ import pandas as pd
 from scipy import optimize
 from scipy.stats import norm
 from scipy.special import erf
+from scipy.optimize import differential_evolution
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas_market_calendars as mcal
@@ -39,7 +40,7 @@ def iv_cal(cp_flag, s, k, t, r, target):
         return 0
 
 
-# B* func
+# B* func Calculation
 def Bfunc(S, K, t, sigma):
     inside = (K - S) / (np.sqrt(2 * t) * sigma)
     outsideup = sigma * np.sqrt(t) * np.exp(-(K - S) ** 2 / (2 * t * sigma ** 2))
@@ -53,17 +54,14 @@ def loss_func(s, t, k, c):
     # T: constant and calculated
     # K: list, imported
     # c: list, imported
-
     def find_sigma(x):
         a = 0
         for i in range(0, len(k)):
             a += (Bfunc(s, k[i], t, x) - c[i]) ** 2
         return a
 
-    return optimize.fmin(find_sigma, 10)
+    return optimize.fmin(find_sigma, 10, disp=False)
 
-
-# print(loss_func(566.82, 3/252, dt['Strike'],dt['Mid']))
 
 # Market Days Calculation
 def mkt_time(t1, t2):
@@ -73,27 +71,7 @@ def mkt_time(t1, t2):
     return len(t) / 252
 
 
-# %% Data Import
-dt = pd.read_excel(r'/Users/binglianluo/Desktop/Spring2022/Practicum/AMZNtest1.xlsx')
-K = np.append(0, dt['Strike'])
-K = np.append(K, 10000)
-V = np.zeros(len(dt['Strike']))
-u = 0
-h = 0
-S0 = 2720.29
-t = mkt_time('2022-03-08', '2022-06-17')
-dt['Bid_IV'] = 0
-dt['Ask_IV'] = 0
-dt['Mid'] = (dt['Bid'] + dt['Ask']) / 2
-dt['Moneyness'] = 0
-sigma = loss_func(2720.29, t, dt['Strike'], dt['Mid']) * np.sqrt(t)
-
-
-# print(loss_func(2720.29, t, dt['Strike'],dt['Mid']))
-
-
-# %% Iu Calculation
-
+# Iu Calculation
 def cal_Iu(V, h):
     A = (K[0] - S0) / sigma
     B = (K[1] - S0) / sigma
@@ -109,13 +87,9 @@ def cal_Iu(V, h):
     return sum
 
 
-u = np.log(cal_Iu(V, h))[0]
-print("u = ", u)
-
-
 # Ih Calculation
+# Solve for h
 # Without using the value of u
-
 def solve_Ih(V):
     def Ih(h):
         A = (K[0] - S0) / sigma
@@ -140,16 +114,11 @@ def solve_Ih(V):
                     (erf((B - alpha * sigma) / np.sqrt(2)) - erf((A - alpha * sigma) / np.sqrt(2))))
         return sum
 
-    # print ("Ih", Ih(0)[0])
     root = optimize.brentq(Ih, -0.01, 0.01)
     return root
 
 
-h = solve_Ih(V)
-print("h = ", h)
-
-
-# %%
+# Ik Calculation
 def Ik(h, V, K):
     V_k = np.zeros(len(V))
     for j in range(0, len(V)):
@@ -168,17 +137,8 @@ def Ik(h, V, K):
     return V_k
 
 
-print("Ik = ", Ik(h, V, K))
-
-#
-c_bid = dt['Bid']
-c_ask = dt['Ask']
-c_mid = [(a + b) / 2 for a, b in zip(c_bid, c_ask)]
-delta_bid = [(a - b) for a, b in zip(c_bid, c_mid)]
-delta_ask = [(a - b) for a, b in zip(c_ask, c_mid)]
-w = [0.1 * (a - b) for a, b in zip(c_ask, c_bid)]
-
-
+# f1 partial calculation
+# Used for g1 partial
 def f1_partial(V):
     partial = np.zeros(len(V))
     for i in range(0, len(V)):
@@ -191,18 +151,14 @@ def f1_partial(V):
     return partial
 
 
+# g1 partial calculation
+# Not used in DE
 def g1_partial(V, u, h):
     return f1_partial(V) + c_mid - Ik(h, V, K) * np.exp(-u)
 
 
-# print(Ik(0, V, K)*np.exp(-u))
-# print(f1_partial(V)+c_mid-Ik(0, V, K)*np.exp(-u))
-
-print("g1_partial = ", g1_partial(V, u, h))
-
-
-# %%
-# V = np.array(pd.read_excel('V.xlsx', header = None))[:,0]
+# Sum of f1
+# Used to calculate g1
 def sum_f1(V):
     f = [0 for x in range(0, len(c_bid))]
     for i in range(0, len(f)):
@@ -215,73 +171,26 @@ def sum_f1(V):
     return np.sum(f)
 
 
-def g1(V):
+# g1 Calculation
+def g1(u, h, V):
     res = u + sum_f1(V) + np.sum(V * c_mid) + cal_Iu(V, h) * np.exp(-u)
     return res[0]
 
 
-print(g1(V))
+# DE to update V
+def V_update(u, h):
+    def solve_V(V):
+        return g1(u, h, V)
+    bounds = [(-0.001, 0.001)] * 26
+    result = differential_evolution(solve_V, bounds)
+    v = result.x
+    return v
 
-
-def g1_prime(V):
-    return g1_partial(V, 0, 0)
-
-
-from scipy.optimize import differential_evolution
-from scipy.optimize import NonlinearConstraint, Bounds
-import numpy as np
-
-#
-bounds = [(-0.001,0.001)]*26
-start_time = time.time()
-result = differential_evolution(g1, bounds)
-print("--- %s seconds ---" % (time.time() - start_time))
-print(result.x, result.fun)
-V = result.x
 # print(fmin_bfgs(g1, np.ones(len(dt['Strike'])) * 0.000001, fprime=g1_prime))
 
-# %% Update of V
-# V = np.zeros(len(dt['Strike']))
-# V = np.ones(len(dt['Strike']))*0.001
-# V = np.array(pd.read_excel('V2.xlsx', header = None))[:,0]
-D = np.eye(len(dt['Strike'])) * 0.001
-a = 0.001
-l = []
-start_time = time.time()
-print(g1_partial(V, u, h))
-epsilon = np.linalg.norm(g1_partial(V, u, h))
-i = 0
 
-for i in range(0, 10000):
-    # while epsilon > 0.001:
-    g1_1 = g1_partial(V, u, h)
-    d = -D @ np.transpose([g1_1])
-    s = a * d
-    V_update = V + s.T[0]
-    g1_2 = g1_partial(V_update, u, h)
-    epsilon = np.linalg.norm(g1_2)
-    # epsilon = np.linalg.norm(d)
-    l.append(epsilon)
-    print(i, epsilon)
-    if epsilon > 0.0001:
-        y = g1_2 - g1_1
-        D = (np.eye(len(dt['Strike'])) - (s @ np.array([y])) / (y @ s)) @ D @ (
-                np.eye(len(dt['Strike'])) - (np.array([y]).T @ s.T) / (y @ s)) \
-            + (s @ s.T) / (y @ s)
-        V = V_update
-        i = i + 1
-    else:
-        break
-# print(g1_partial(V_update, u, h))
-# print(V)
-print("--- %s seconds ---" % (time.time() - start_time))
-
-# %%
-# pd.DataFrame(V).to_excel('V2.xlsx')
-
-
-# %%
-def cpfgVlast(V):
+# Call price calculation
+def call_price(u, h, V):
     # Remark4.3
     def alphafuncKlast(alpha, sigma, K1, K2, S0, K):
         A = (K1 - S0) / sigma
@@ -309,13 +218,59 @@ def cpfgVlast(V):
             integro[n] += outside * alphafuncKlast(alpha, sigma, K[i], K[i + 1], S0, K[0])
 
     # first = df+call_mid-integro
-    return (integro)
+    return (integro * np.exp(-u))
 
-
-print(cpfgVlast(V))
 
 # %% Implementation sample
-dt['Model'] = cpfgVlast(V)
+dt = pd.read_excel(r'/Users/binglianluo/Desktop/Spring2022/Practicum/AMZNtest1.xlsx')
+# V = np.array(pd.read_excel('V.xlsx', header = None))[:,0]
+K = np.append(0, dt['Strike'])
+K = np.append(K, 10000)
+V = np.zeros(len(dt['Strike']))
+# V = np.ones(len(dt['Strike']))*0.000001
+u = 0
+h = 0
+S0 = 2720.29
+t = mkt_time('2022-03-08', '2022-06-17')
+dt['Bid_IV'] = 0
+dt['Ask_IV'] = 0
+dt['Mid'] = (dt['Bid'] + dt['Ask']) / 2
+dt['Moneyness'] = 0
+sigma = loss_func(2720.29, t, dt['Strike'], dt['Mid']) * np.sqrt(t)
+
+c_bid = dt['Bid']
+c_ask = dt['Ask']
+c_mid = [(a + b) / 2 for a, b in zip(c_bid, c_ask)]
+delta_bid = [(a - b) for a, b in zip(c_bid, c_mid)]
+delta_ask = [(a - b) for a, b in zip(c_ask, c_mid)]
+w = [0.1 * (a - b) for a, b in zip(c_ask, c_bid)]
+
+u_l = []
+h_l = []
+g1_l = []
+for i in range(0, 1000):
+    start_time = time.time()
+    u = np.log(cal_Iu(V, h))[0]
+    u_l.append(u)
+    h = solve_Ih(V)
+    h_l.append(h)
+    V = V_update(u, h)
+    func_val = g1(u, h, V)
+    g1_l.append(func_val)
+    # print(V)
+    print("G1 = ", func_val)
+    print("Iteration %s --- %s seconds ---" % (i+1, time.time() - start_time))
+    print("u = %s , h = %s" % (u, h))
+#%%
+# plt.plot(u_l)
+# plt.plot(h_l)
+# plt.show()
+
+plt.plot(g1_l)
+plt.show()
+
+# %% Data visualization
+dt['Model'] = call_price(u, h, V)
 for i in range(0, len(dt)):
     dt.loc[i, 'Moneyness'] = dt.loc[i, 'Strike'] / S0
     dt.loc[i, 'Bid_IV'] = iv_cal('c', S0, dt.loc[i, 'Strike'], t, 0, dt.loc[i, 'Bid'])
@@ -330,6 +285,6 @@ plt.scatter(dt['Moneyness'], dt['Bid_IV'], c='orange', marker='^', s=10)
 plt.plot(dt['Moneyness'], dt['Mid_IV'], c='purple')
 plt.scatter(dt['Moneyness'], dt['Model_IV'], c='red', marker='x', s=10)
 # plt.xlim(0.75, 1.2)
-plt.ylim(0.3, 0.6)
+# plt.ylim(0.3, 0.6)
 plt.legend(labels=['Ask', 'Bid', 'Mid', 'Model'])
 plt.show()
