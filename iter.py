@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 import pandas_market_calendars as mcal
 import time
 import seaborn as sns
-
 from scipy.optimize import fmin_bfgs
 
 
@@ -75,15 +74,20 @@ def mkt_time(t1, t2):
 def cal_Iu(V, h):
     A = (K[0] - S0) / sigma
     B = (K[1] - S0) / sigma
-    sum = np.exp(h * S0) * 0.5 * np.exp((-h * sigma) ** 2 / 2 - h * S0) * \
+    sum = 0.5 * np.exp((-h * sigma) ** 2 / 2) * \
           (erf((B + h * sigma) / np.sqrt(2)) - erf((A + h * sigma) / np.sqrt(2)))
+    # print(sum)
     for k in range(0, len(dt['Strike'])):
         A = (K[k + 1] - S0) / sigma
         B = (K[k + 2] - S0) / sigma
         alpha = -V[0:k + 1].sum() - h
         beta = (V[0:k + 1] * K[1:k + 2]).sum() + h * S0
-        sum += np.exp(beta) * 0.5 * np.exp((alpha * sigma) ** 2 / 2 + alpha * S0) * \
+
+        sum += 0.5 * np.exp(beta + (alpha * sigma) ** 2 / 2 + alpha * S0) * \
                (erf((B - alpha * sigma) / np.sqrt(2)) - erf((A - alpha * sigma) / np.sqrt(2)))
+        # print(alpha, beta, beta + (alpha * sigma) ** 2 / 2 + alpha * S0,
+        #       np.exp(beta + (alpha * sigma) ** 2 / 2 + alpha * S0),
+        #       (B - alpha * sigma) / np.sqrt(2), (A - alpha * sigma) / np.sqrt(2), sum)
     return sum
 
 
@@ -181,10 +185,12 @@ def g1(u, h, V):
 def V_update(u, h):
     def solve_V(V):
         return g1(u, h, V)
-    bounds = [(-0.001, 0.001)] * 26
+
+    bounds = [(-0.0018, 0.0018)] * 26
     result = differential_evolution(solve_V, bounds)
     v = result.x
     return v
+
 
 # print(fmin_bfgs(g1, np.ones(len(dt['Strike'])) * 0.000001, fprime=g1_prime))
 
@@ -219,6 +225,68 @@ def call_price(u, h, V):
 
     # first = df+call_mid-integro
     return (integro * np.exp(-u))
+
+
+print("Complete")
+# %%
+dt = pd.read_excel(r'/Users/binglianluo/Desktop/Spring2022/Practicum/AMZNtest1.xlsx')
+# V = np.array(pd.read_excel('V.xlsx', header = None))[:,0]
+K = np.append(0, dt['Strike'])
+K = np.append(K, 10000)
+V = np.zeros(len(dt['Strike']))
+# V = np.ones(len(dt['Strike']))*0.000001
+u = 0
+h = 0
+S0 = 2720.29
+t = mkt_time('2022-03-08', '2022-06-17')
+dt['Bid_IV'] = 0
+dt['Ask_IV'] = 0
+dt['Mid'] = (dt['Bid'] + dt['Ask']) / 2
+dt['Moneyness'] = 0
+sigma = loss_func(2720.29, t, dt['Strike'], dt['Mid']) * np.sqrt(t)
+c_bid = dt['Bid']
+c_ask = dt['Ask']
+c_mid = [(a + b) / 2 for a, b in zip(c_bid, c_ask)]
+delta_bid = [(a - b) for a, b in zip(c_bid, c_mid)]
+delta_ask = [(a - b) for a, b in zip(c_ask, c_mid)]
+w = [0.1 * (a - b) for a, b in zip(c_ask, c_bid)]
+# V = np.zeros(len(dt['Strike']))
+# V = np.ones(len(dt['Strike']))*0.001
+# V = np.array(pd.read_excel('V2.xlsx', header = None))[:,0]
+
+print("Complete")
+# %%
+D = np.eye(len(dt['Strike']))
+a = 0.00001
+l = []
+start_time = time.time()
+print(g1_partial(V, u, h))
+epsilon = np.linalg.norm(g1_partial(V, u, h))
+i = 0
+
+for i in range(0, 100):
+    # while epsilon > 0.001:
+    g1_1 = g1_partial(V, u, h)
+    d = -D @ np.transpose([g1_1])
+    s = a * d
+    V_update = V + s.T[0]
+    g1_2 = g1_partial(V_update, u, h)
+    epsilon = np.linalg.norm(g1_2)
+    # epsilon = np.linalg.norm(d)
+    l.append(epsilon)
+    print(i, epsilon)
+    if epsilon > 0.0001:
+        y = g1_2 - g1_1
+        D = (np.eye(len(dt['Strike'])) - (s @ np.array([y])) / (y @ s)) @ D @ (
+                np.eye(len(dt['Strike'])) - (np.array([y]).T @ s.T) / (y @ s)) \
+            + (s @ s.T) / (y @ s)
+        V = V_update
+        i = i + 1
+    else:
+        break
+    print(g1_partial(V_update, u, h))
+# print(V)
+print("--- %s seconds ---" % (time.time() - start_time))
 
 
 # %% Implementation sample
@@ -258,18 +326,27 @@ for i in range(0, 1000):
     func_val = g1(u, h, V)
     g1_l.append(func_val)
     # print(V)
+
+    print("Iteration %s --- %s seconds ---" % (i + 1, time.time() - start_time))
     print("G1 = ", func_val)
-    print("Iteration %s --- %s seconds ---" % (i+1, time.time() - start_time))
     print("u = %s , h = %s" % (u, h))
-#%%
+    print(np.round(V, 6))
+
+
+# %% Iteration Visualization
 # plt.plot(u_l)
 # plt.plot(h_l)
 # plt.show()
 
 plt.plot(g1_l)
+plt.legend("g1")
+plt.title("Iteration Times = 1000, Boundary = ±0.001")
 plt.show()
 
-# %% Data visualization
+# pd.DataFrame(V).to_excel('DE_V.xlsx')
+
+
+# %% Model visualization
 dt['Model'] = call_price(u, h, V)
 for i in range(0, len(dt)):
     dt.loc[i, 'Moneyness'] = dt.loc[i, 'Strike'] / S0
@@ -287,4 +364,5 @@ plt.scatter(dt['Moneyness'], dt['Model_IV'], c='red', marker='x', s=10)
 # plt.xlim(0.75, 1.2)
 # plt.ylim(0.3, 0.6)
 plt.legend(labels=['Ask', 'Bid', 'Mid', 'Model'])
+plt.title("Iteration Times = 1000, Boundary = ±0.001")
 plt.show()
