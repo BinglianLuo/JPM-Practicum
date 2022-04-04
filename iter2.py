@@ -282,7 +282,7 @@ def precision (c_mid, c_model):
 
 print("Complete")
 # %%
-dt = pd.read_excel(r'/Users/binglianluo/Desktop/Spring2022/Practicum/TSLAtest.xlsx')
+dt = pd.read_excel(r'/Users/binglianluo/Desktop/Spring2022/Practicum/TSLAtest1.xlsx')
 # V = np.array(pd.read_excel('V.xlsx', header = None))[:,0]
 K = np.append(0, dt['Strike'])
 K = np.append(K, 10000)
@@ -309,6 +309,7 @@ c_ask = dt['Ask']
 c_mid = [(a + b) / 2 for a, b in zip(c_bid, c_ask)]
 delta_bid = [(a - b) for a, b in zip(c_bid, c_mid)]
 delta_ask = [(a - b) for a, b in zip(c_ask, c_mid)]
+# w = np.zeros(len(dt['Strike']))
 w = [0.1 * (a - b) for a, b in zip(c_ask, c_bid)]
 # V = np.zeros(len(dt['Strike']))
 # V = np.ones(len(dt['Strike']))*0.001
@@ -325,7 +326,7 @@ u_l = []
 h_l = []
 g1_l = []
 r_l = []
-for i in range(0, 100):
+for i in range(0, 500):
     start_time = time.time()
     u = float(sym.log(cal_Iu1(V, h)))
     u_l.append(u)
@@ -334,18 +335,19 @@ for i in range(0, 100):
 
 
     # def min_g1partial(V):
-    #     return g1_partial(V, u, h)
+    #     return g1_partial1(V, u, h)
     # V = fsolve(min_g1partial, V)
 
 
     def min_g1(V):
-        return g1(u, h, V)
-    res = minimize(min_g1, V, method='BFGS')
+        return g11(u, h, V)
+    res = minimize(min_g1, V, method='L-BFGS-B')
     V = res.x
 
-    func_val = g11(u, h, V)
+    func_val = g1(u, h, V)
     g1_l.append(func_val)
-
+    if (i >=1) and (abs(g1_l[i] - g1_l[i-1]) <= 10 ** (-10)):
+        break
     r = np.sqrt(precision(c_mid, call_price(u, h, V)))
     r_l.append(r)
 
@@ -356,7 +358,7 @@ for i in range(0, 100):
     # print(np.round(V, 6))
 
 
-# %% Quasi Newton
+ # %% Quasi Newton
 D = np.eye(len(dt['Strike']))
 a = 0.001
 l = []
@@ -448,9 +450,9 @@ print("--- %s seconds ---" % (time.time() - start_time))
 # plt.plot(h_l)
 # plt.show()
 
-plt.plot(r_l)
-plt.legend("R")
-plt.title("TSLATest1-Scaled, Iteration Times = 100")
+plt.plot(g1_l)
+plt.legend("g")
+plt.title("EURO STOXX 50, Iteration Times = 5000")
 plt.show()
 
 # pd.DataFrame(V).to_excel('DE_V.xlsx')
@@ -471,8 +473,8 @@ plt.scatter(dt1['Moneyness'], dt1['Ask_IV'], c='blue', marker='o', s=10)
 plt.scatter(dt1['Moneyness'], dt1['Bid_IV'], c='orange', marker='^', s=10)
 plt.plot(dt1['Moneyness'], dt1['Mid_IV'], c='purple')
 plt.scatter(dt1['Moneyness'], dt1['Model_IV'], c='red', marker='x', s=10)
-# plt.xlim(0.85, 1.2)
-plt.ylim(0.5, 0.7)
+plt.xlim(0.9, 1.2)
+plt.ylim(0.4, 0.70)
 plt.legend(labels=['Ask', 'Bid', 'Mid', 'Model'])
-plt.title("Iteration Times = 1000, Boundary = ±0.001")
+plt.title("EURO STOXX 50, Mat = 29 Days, Iteration = 5000")
 plt.show()
