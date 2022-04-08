@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import pandas_market_calendars as mcal
 import time
 import sympy as sym
+import sklearn.metrics
 import seaborn as sns
 from scipy.optimize import fmin_bfgs
 
@@ -68,7 +69,7 @@ def mkt_time(t1, t2):
     nyse = mcal.get_calendar('NYSE')
     early = nyse.schedule(start_date=t1, end_date=t2)
     t = mcal.date_range(early, frequency='1D')
-    return len(t) / 252
+    return (len(t) + 1) / 252
 
 
 # Iu Calculation
@@ -90,6 +91,7 @@ def cal_Iu(V, h):
         #       (B - alpha * sigma) / np.sqrt(2), (A - alpha * sigma) / np.sqrt(2), sum)
     return sum
 
+
 def cal_Iu1(V, h):
     A = (K[0] - S0) / sigma
     B = (K[1] - S0) / sigma
@@ -100,12 +102,12 @@ def cal_Iu1(V, h):
         B = (K[k + 2] - S0) / sigma
         alpha = -V[0:k + 1].sum() - h
         beta = (V[0:k + 1] * K[1:k + 2]).sum() + h * S0
-        sum += sym.N(0.5 * sym.exp(beta + (alpha * sigma) ** 2 / 2 + alpha * S0) * \
-               (sym.erf((B - alpha * sigma) / np.sqrt(2)) - sym.erf((A - alpha * sigma) / np.sqrt(2))))
+        sum += 0.5 * sym.exp(beta + (alpha * sigma) ** 2 / 2 + alpha * S0) * \
+               (sym.erf((B - alpha * sigma) / np.sqrt(2)) - sym.erf((A - alpha * sigma) / np.sqrt(2)))
         # print(alpha, beta, beta + (alpha * sigma) ** 2 / 2 + alpha * S0,
         #       np.exp(beta + (alpha * sigma) ** 2 / 2 + alpha * S0),
         #       (B - alpha * sigma) / np.sqrt(2), (A - alpha * sigma) / np.sqrt(2), sum)
-    return sum
+    return sym.N(sum)
 
 
 # Ih Calculation
@@ -134,7 +136,34 @@ def solve_Ih(V):
                     (erf((B - alpha * sigma) / np.sqrt(2)) - erf((A - alpha * sigma) / np.sqrt(2))))
         return sum
 
-    root = optimize.brentq(Ih, -0.01, 0.01)
+    root = optimize.brentq(Ih, -10, 10)
+    return root
+
+
+def solve_Ih1(V):
+    def Ih(h):
+        A = (K[0] - S0) / sigma
+        B = (K[1] - S0) / sigma
+        alpha = - h
+        beta = h * S0
+        sum = np.exp(beta) * \
+              (2 * sigma * np.exp(alpha * S0)
+               * (np.exp(A * alpha * sigma - A ** 2 / 2) - np.exp(B * alpha * sigma - B ** 2 / 2)) +
+               np.sqrt(2 * np.pi) * alpha * sigma ** 2 * np.exp((alpha * sigma) ** 2 / 2 + alpha * S0) *
+               (erf((B - alpha * sigma) / np.sqrt(2)) - erf((A - alpha * sigma) / np.sqrt(2))))
+        for k in range(0, len(dt['Strike'])):
+            A = (K[k + 1] - S0) / sigma
+            B = (K[k + 2] - S0) / sigma
+            alpha = -V[0:k + 1].sum() - h
+            beta = (V[0:k + 1] * K[1:k + 2]).sum() + h * S0
+            sum += np.exp(beta) * \
+                   (2 * sigma * np.exp(alpha * S0)
+                    * (np.exp(A * alpha * sigma - A ** 2 / 2) - np.exp(B * alpha * sigma - B ** 2 / 2)) +
+                    np.sqrt(2 * np.pi) * alpha * sigma ** 2 * np.exp((alpha * sigma) ** 2 / 2 + alpha * S0) *
+                    (erf((B - alpha * sigma) / np.sqrt(2)) - erf((A - alpha * sigma) / np.sqrt(2))))
+        return sum
+
+    root = optimize.fsolve(Ih, 0)
     return root
 
 
@@ -148,8 +177,8 @@ def Ik(h, V, K):
             B = (K[k + 2] - S0) / sigma
             alpha = -V[0:k + 1].sum() - h
             beta = (V[0:k + 1] * K[1:k + 2]).sum() + h * S0
-            sum += (2 * sigma * np.exp(alpha * S0) \
-                    * (np.exp(A * alpha * sigma - A ** 2 / 2 + beta) - np.exp(B * alpha * sigma - B ** 2 / 2)) + \
+            sum += (2 * sigma * np.exp(alpha * S0 + beta) \
+                    * (np.exp(A * alpha * sigma - A ** 2 / 2) - np.exp(B * alpha * sigma - B ** 2 / 2)) + \
                     np.sqrt(2 * np.pi) * (alpha * sigma ** 2 - K[j + 1] + S0) * np.exp(
                         (alpha * sigma) ** 2 / 2 + alpha * S0 + beta) * \
                     (erf((B - alpha * sigma) / np.sqrt(2)) - erf((A - alpha * sigma) / np.sqrt(2))))
@@ -166,11 +195,11 @@ def Ik1(h, V, K):
             B = (K[k + 2] - S0) / sigma
             alpha = -V[0:k + 1].sum() - h
             beta = (V[0:k + 1] * K[1:k + 2]).sum() + h * S0
-            sum += sym.N((2 * sigma * sym.exp(alpha * S0) \
-                    * (sym.exp(A * alpha * sigma - A ** 2 / 2 + beta) - sym.exp(B * alpha * sigma - B ** 2 / 2)) + \
-                    sym.sqrt(2 * sym.pi) * (alpha * sigma ** 2 - K[j + 1] + S0) * sym.exp(
+            sum += sym.N((2 * sigma * sym.exp(alpha * S0 + beta) \
+                          * (sym.exp(A * alpha * sigma - A ** 2 / 2) - sym.exp(B * alpha * sigma - B ** 2 / 2)) + \
+                          sym.sqrt(2 * sym.pi) * (alpha * sigma ** 2 - K[j + 1] + S0) * sym.exp(
                         (alpha * sigma) ** 2 / 2 + alpha * S0 + beta) * \
-                    (sym.erf((B - alpha * sigma) / np.sqrt(2)) - sym.erf((A - alpha * sigma) / np.sqrt(2)))))
+                          (sym.erf((B - alpha * sigma) / np.sqrt(2)) - sym.erf((A - alpha * sigma) / np.sqrt(2)))))
         V_k[j] = sum / (2 * np.sqrt(2 * np.pi))
     return V_k
 
@@ -191,8 +220,19 @@ def f1_partial(V):
 
 # g1 partial calculation
 # Not used in DE
+def g1_partial1(V, u, h):
+    return sym.Array(f1_partial(V) + c_mid - sym.Array(Ik1(h, V, K) * np.exp(-u))[0])
+
+
 def g1_partial(V, u, h):
-    return f1_partial(V) + c_mid - Ik1(h, V, K) * np.exp(-u)
+    return f1_partial(V) + c_mid - Ik(h, V, K) * np.exp(-u)
+
+
+def sp_norm(a):
+    s = 0
+    for i in range(0, len(a)):
+        s += a[i] ** 2
+    return sym.sqrt(s)
 
 
 # Sum of f1
@@ -211,15 +251,22 @@ def sum_f1(V):
 
 # g1 Calculation
 def g1(u, h, V):
-    res = u + sum_f1(V) + np.sum(V * c_mid) + cal_Iu1(V, h) * np.exp(-u)
+    res = u + sum_f1(V) + np.sum(V * c_mid) + cal_Iu(V, h) * np.exp(float(-u))
+    return res
+
+
+def g11(u, h, V):
+    res = u + sum_f1(V) + np.sum(V * c_mid) + cal_Iu1(V, h) * np.exp(float(-u))
     return res
 
 
 # DE to update V
 def V_update(u, h, V, bound):
     l = len(V)
+
     def solve_V(v):
         return g1(u, h, v)
+
     bound_u = bound
     bound_l = -bound
     bounds = [(bound_l, bound_u)] * l
@@ -233,39 +280,38 @@ def V_update(u, h, V, bound):
 
 # Call price calculation
 def call_price(u, h, V):
-    # Remark4.3
-    def alphafuncKlast(alpha, sigma, K1, K2, S0, K):
-        A = (K1 - S0) / sigma
-        B = (K2 - S0) / sigma
-        out = np.exp(alpha * S0) / (2 * np.sqrt(2 * np.pi))
-        one = 2 * sigma * np.exp(A * alpha * sigma - A ** 2 / 2)
-        two = np.sqrt(2 * np.pi) * np.exp(alpha ** 2 * sigma ** 2 / 2) \
-              * erf((A - alpha * sigma) / np.sqrt(2)) * (alpha * sigma ** 2 - K + S0)
-        three = np.sqrt(2 * np.pi) * np.exp(alpha ** 2 * sigma ** 2 / 2) \
-                * erf((B - alpha * sigma) / np.sqrt(2)) * (alpha * sigma ** 2 - K + S0)
-        four = 2 * sigma * np.exp(B * alpha * sigma - B ** 2 / 2)
-        return (out * (one - two + three - four))
+    return Ik(h, V, K) * np.exp(-u)
 
-    integro = np.zeros(len(dt['Strike']))
-    Kmax = 10000
-    for n in range(len(dt['Strike'])):
-        K = np.append(dt['Strike'][n:], Kmax)
-        for i in range(len(K) - 1):
-            outside = np.exp(h * S0 - u + V[0] * K[0])
-            alpha = -h - V[0]
-            # print(call_strike[i],call_strike[i+1])
-            for j in range(1, i + 1):
-                outside *= np.exp(V[j] * K[j])
-                alpha -= V[j]
-            integro[n] += outside * alphafuncKlast(alpha, sigma, K[i], K[i + 1], S0, K[0])
 
-    # first = df+call_mid-integro
-    return (integro * np.exp(-u))
+def precision(c_mid, c_model):
+    return sklearn.metrics.r2_score(c_mid, c_model)
+
+
+def curve_arbfree(c_bid, c_ask, c_model):
+    check_bid = sum(c_bid > c_model)
+    check_ask = sum(c_ask < c_model)
+    if check_bid != 0 or check_ask != 0:
+        return False
+    else:
+        return True
+
+
+def deviation_ratio(u, h, V, dt):
+    sum_value = np.sum(np.abs((call_price(u, h, V) - dt['Mid'])) / (dt['Ask'] - dt['Bid']) / len(dt))
+    return sum_value
 
 
 print("Complete")
+
+
 # %%
-dt = pd.read_excel(r'/Users/binglianluo/Desktop/Spring2022/Practicum/AMZNtest2.xlsx')
+dt = pd.read_excel(r'/Users/binglianluo/Desktop/Spring2022/Practicum/TSLA1.xlsx')
+S0 = 918.4
+t = mkt_time('2022-01-25', '2022-01-28')
+dt = dt[dt["Strike"] / S0 >= 0.7]
+dt = dt[dt["Strike"] / S0 <= 1.3]
+dt = dt.reset_index(drop=True)
+
 # V = np.array(pd.read_excel('V.xlsx', header = None))[:,0]
 K = np.append(0, dt['Strike'])
 K = np.append(K, 10000)
@@ -273,41 +319,109 @@ V = np.zeros(len(dt['Strike']))
 # V = np.ones(len(dt['Strike']))*0.000001
 u = 0
 h = 0
-S0 = 2720.29
-t = mkt_time('2022-03-08', '2022-04-14')
+
 dt['Bid_IV'] = 0
 dt['Ask_IV'] = 0
 dt['Mid'] = (dt['Bid'] + dt['Ask']) / 2
-dt['Moneyness'] = 0
 sigma = (loss_func(S0, t, dt['Strike'], dt['Mid']) * np.sqrt(t))[0]
+
+# Scaling
+dt = dt / S0
+sigma = sigma / S0
+K = K / S0
+S0 = 1
+
 c_bid = dt['Bid']
 c_ask = dt['Ask']
 c_mid = [(a + b) / 2 for a, b in zip(c_bid, c_ask)]
 delta_bid = [(a - b) for a, b in zip(c_bid, c_mid)]
 delta_ask = [(a - b) for a, b in zip(c_ask, c_mid)]
+# w = np.zeros(len(dt['Strike']))
 w = [0.1 * (a - b) for a, b in zip(c_ask, c_bid)]
-# V = np.zeros(len(dt['Strike']))
-# V = np.ones(len(dt['Strike']))*0.001
-# V = np.array(pd.read_excel('V2.xlsx', header = None))[:,0]
 
 print("Complete")
+
 # %%
+from scipy.optimize import minimize, fsolve, root
+
+V = np.zeros(len(dt['Strike']))
+# V = np.ones(len(dt['Strike']))
+
+u_l = []
+h_l = []
+g1_l = []
+r_l = []
+start_time0 = time.time()
+for i in range(0, 5000):
+    start_time = time.time()
+
+    # Update u
+    u = float(sym.log(cal_Iu1(V, h)))
+    u_l.append(u)
+
+    # Update h
+    h = solve_Ih1(V)[0]
+    h_l.append(h)
+
+    # Update V
+    def min_g1(V):
+        return g1(u, h, V)
+
+    res = minimize(min_g1, V, method='L-BFGS-B')
+    V = res.x
+
+    # def min_g1partial(V):
+    #     return g1_partial1(V, u, h)
+    # V = fsolve(min_g1partial, V)
+
+    func_val = g1(u, h, V)
+    g1_l.append(func_val)
+
+    r = deviation_ratio(u, h, V, dt)
+    r_l.append(r)
+
+    print("Iteration %s --- %s seconds ---" % (i + 1, time.time() - start_time))
+    print("G1 = ", func_val)
+    print("u = %s , h = %s" % (u, h))
+    print("Deviation ratio = ", r)
+
+    # Bid/Ask test
+    c_model = call_price(u, h, V)
+    if curve_arbfree(c_bid, c_ask, c_model):
+        print("Arb-free at %s iteration" % (i + 1))
+        break
+
+    # Deviation Ratio Test
+    if r <= 0.05:
+        print("Satisfy fitness at %s iteration" % (i + 1))
+        break
+
+    # Convergence Test
+    if (i >= 1) and (abs(g1_l[i] - g1_l[i - 1]) <= 10 ** (-10)):
+        print("Convergence at %s iteration" % (i + 1))
+        break
+    # print(np.round(V, 6))
+
+print("Total time is %s seconds ---" % (time.time() - start_time0))
+
+
+# %% Quasi Newton
 D = np.eye(len(dt['Strike']))
-a = 0.0000001
+a = 0.001
 l = []
 start_time = time.time()
 print(g1_partial(V, u, h))
-epsilon = np.linalg.norm(g1_partial(V, u, h))
+epsilon = sp_norm(g1_partial(V, u, h))
 i = 0
 
-for i in range(0, 3):
+for i in range(0, 10000):
     # while epsilon > 0.001:
     g1_1 = g1_partial(V, u, h)
     d = -D @ np.transpose([g1_1])
     s = a * d
     V_update = V + s.T[0]
     g1_2 = g1_partial(V_update, u, h)
-    epsilon = np.linalg.norm(g1_2)
+    epsilon = sp_norm(g1_2)
     # epsilon = np.linalg.norm(d)
     l.append(epsilon)
     print(i, epsilon)
@@ -320,13 +434,15 @@ for i in range(0, 3):
         i = i + 1
     else:
         break
-    print(g1_partial(V_update, u, h))
+    # print(g1_partial(V_update, u, h))
 # print(V)
 print("--- %s seconds ---" % (time.time() - start_time))
 
+plt.plot(l)
+plt.show()
 
-# %% Implementation sample
-dt = pd.read_excel(r'/Users/binglianluo/Desktop/Spring2022/Practicum/AMZNtest2.xlsx')
+# %% Differential Evolution
+dt = pd.read_excel(r'/Users/binglianluo/Desktop/Spring2022/Practicum/AMZNtest2-2.xlsx')
 # V = np.array(pd.read_excel('V.xlsx', header = None))[:,0]
 K = np.append(0, dt['Strike'])
 K = np.append(K, 10000)
@@ -334,13 +450,14 @@ V = np.zeros(len(dt['Strike']))
 # V = np.ones(len(dt['Strike']))*0.000001
 u = 0
 h = 0
-S0 = 2720.29
+S0 = 1
 t = mkt_time('2022-03-08', '2022-04-14')
 dt['Bid_IV'] = 0
 dt['Ask_IV'] = 0
 dt['Mid'] = (dt['Bid'] + dt['Ask']) / 2
 dt['Moneyness'] = 0
-sigma = (loss_func(S0, t, dt['Strike'], dt['Mid']) * np.sqrt(t))[0]
+# sigma = (loss_func(S0, t, dt['Strike'], dt['Mid']) * np.sqrt(t))[0]
+sigma = 365.43017578125 / 2720.29
 
 c_bid = dt['Bid']
 c_ask = dt['Ask']
@@ -352,13 +469,13 @@ w = [0.1 * (a - b) for a, b in zip(c_ask, c_bid)]
 u_l = []
 h_l = []
 g1_l = []
-for i in range(0, 1000):
+for i in range(0, 1):
     start_time = time.time()
-    u = np.log(cal_Iu(V, h))[0]
+    u = sym.log(cal_Iu1(V, h))
     u_l.append(u)
     h = solve_Ih(V)
     h_l.append(h)
-    V = V_update(u, h, V, 0.001)
+    V = V_update(u, h, V, 1)
     func_val = g1(u, h, V)
     g1_l.append(func_val)
     # print(V)
@@ -368,19 +485,17 @@ for i in range(0, 1000):
     print("u = %s , h = %s" % (u, h))
     print(np.round(V, 6))
 
-#%%
-from sympy import *
-print(N(exp(20)*(erf(10)-erf(11)),5))
-
+# %%
+start_time = time.time()
+g1(u, h, V)
+print("--- %s seconds ---" % (time.time() - start_time))
 
 # %% Iteration Visualization
-# plt.plot(u_l)
-# plt.plot(h_l)
-# plt.show()
-
-plt.plot(g1_l)
-plt.legend("g1")
-plt.title("Iteration Times = 1000, Boundary = ±0.001")
+plt.plot(r_l)
+plt.legend("r")
+plt.xlabel('Iteration')
+plt.ylabel('Deviation Ratio')
+plt.title("TSLA1, Mat = 3 days")
 plt.show()
 
 # pd.DataFrame(V).to_excel('DE_V.xlsx')
@@ -388,21 +503,70 @@ plt.show()
 
 # %% Model visualization
 dt['Model'] = call_price(u, h, V)
+# dt['Model1'] = call_price(u1, h1, V1)
+# dt['Model2'] = call_price(u2, h2, V2)
+# dt['Model3'] = call_price(u3, h3, V3)
+
 for i in range(0, len(dt)):
-    dt.loc[i, 'Moneyness'] = dt.loc[i, 'Strike'] / S0
     dt.loc[i, 'Bid_IV'] = iv_cal('c', S0, dt.loc[i, 'Strike'], t, 0, dt.loc[i, 'Bid'])
     dt.loc[i, 'Ask_IV'] = iv_cal('c', S0, dt.loc[i, 'Strike'], t, 0, dt.loc[i, 'Ask'])
     dt.loc[i, 'Mid_IV'] = iv_cal('c', S0, dt.loc[i, 'Strike'], t, 0, dt.loc[i, 'Mid'])
     dt.loc[i, 'Model_IV'] = iv_cal('c', S0, dt.loc[i, 'Strike'], t, 0, dt.loc[i, 'Model'])
+    # dt.loc[i, 'Model1_IV'] = iv_cal('c', S0, dt.loc[i, 'Strike'], t, 0, dt.loc[i, 'Model1'])
+    # dt.loc[i, 'Model2_IV'] = iv_cal('c', S0, dt.loc[i, 'Strike'], t, 0, dt.loc[i, 'Model2'])
+    # dt.loc[i, 'Model3_IV'] = iv_cal('c', S0, dt.loc[i, 'Strike'], t, 0, dt.loc[i, 'Model3'])
 
-dt = dt[~dt['Bid_IV'].isin([0])]
+dt1 = dt[~dt['Bid_IV'].isin([0])]
 # dt = dt[~dt['Model_IV'].isin([0])]
-plt.scatter(dt['Moneyness'], dt['Ask_IV'], c='blue', marker='o', s=10)
-plt.scatter(dt['Moneyness'], dt['Bid_IV'], c='orange', marker='^', s=10)
-plt.plot(dt['Moneyness'], dt['Mid_IV'], c='purple')
-plt.scatter(dt['Moneyness'], dt['Model_IV'], c='red', marker='x', s=10)
-# plt.xlim(0.75, 1.2)
-# plt.ylim(0.3, 0.6)
+plt.scatter(dt1['Strike'], dt1['Ask_IV'], c='b', marker='o', s=10)
+plt.scatter(dt1['Strike'], dt1['Bid_IV'], c='orange', marker='^', s=10)
+plt.plot(dt1['Strike'], dt1['Mid_IV'], c='purple', linewidth=1)
+plt.scatter(dt1['Strike'], dt1['Model_IV'], c='crimson', marker='X', s=15)
+# plt.scatter(dt1['Strike'], dt1['Model1_IV'], c='crimson', marker='x', s=10)
+# plt.scatter(dt1['Strike'], dt1['Model2_IV'], c='limegreen', marker='x', s=10)
+# plt.scatter(dt1['Strike'], dt1['Model3_IV'], c='pink', marker='x', s=10)
+plt.xlim(1.2, 1.3)
+plt.ylim(0.92, 1)
 plt.legend(labels=['Ask', 'Bid', 'Mid', 'Model'])
-plt.title("Iteration Times = 1000, Boundary = ±0.001")
+plt.title("TSLA1, Mat = 3 Days")
+plt.xlabel('Strike')
+plt.ylabel('Implied Volatility')
 plt.show()
+
+
+# %% Call Price Visualization
+plt.scatter(dt1['Strike'], dt1['Ask'], c='blue', marker='o', s=10)
+plt.scatter(dt1['Strike'], dt1['Bid'], c='orange', marker='^', s=10)
+plt.plot(dt1['Strike'], dt1['Mid'], c='purple')
+plt.legend(labels=['Ask', 'Bid', 'Mid'])
+plt.title("TSLA1, Mat = 3 Days")
+plt.ylim(0.0015, 0.006)
+plt.xlim(1.2, 1.3)
+plt.xlabel('Moneyness')
+plt.ylabel('Market Call Price')
+plt.show()
+
+
+# %% Normalized Strike
+dt = pd.read_excel(r'/Users/binglianluo/Desktop/Spring2022/Practicum/T5.xlsx')
+dt['Mid'] = (dt['Bid'] + dt['Ask']) / 2
+# dt = dt[dt["Strike"] >= 550]
+# dt = dt[dt["Strike"] <= 2400]
+# dt = dt.reset_index(drop=True)
+t = mkt_time('2022-04-08', '3/17/23')
+S0 = 1057.26
+F = 1087.68
+for i in range(0, len(dt)):
+    dt.loc[i, 'Mid_IV'] = iv_cal('c', S0, dt.loc[i, 'Strike'], t, 0, dt.loc[i, 'Mid'])
+iv = 0.636
+
+dt["Normalized"] = np.log(dt["Strike"] / F) / (iv * np.sqrt(t))
+dt = dt[dt["Normalized"] >= -1.3]
+dt = dt[dt["Normalized"] <= 1.3]
+dt = dt.reset_index(drop=True)
+
+print("# of Data = ", len(dt))
+print("Maturity = ", t * 252)
+print("K = [%s, %s]" % (dt.loc[0, "Strike"], dt.loc[len(dt) - 1, "Strike"]))
+print("K/S0 = [%s, %s]" % (round(dt.loc[0, "Strike"] / S0, 1), round(dt.loc[len(dt) - 1, "Strike"] / S0, 1)))
+print("Range = [%s, %s]" % (round(dt.loc[0, "Normalized"], 1), round(dt.loc[len(dt) - 1, "Normalized"], 1)))
