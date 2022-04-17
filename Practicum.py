@@ -547,7 +547,7 @@ plt.ylabel('Market Call Price')
 plt.show()
 
 
-# %% Normalized Strike
+# %% Calculate Normalized Strike
 dt = pd.read_excel(r'/Users/binglianluo/Desktop/Spring2022/Practicum/T5.xlsx')
 dt['Mid'] = (dt['Bid'] + dt['Ask']) / 2
 # dt = dt[dt["Strike"] >= 550]
