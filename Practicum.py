@@ -303,20 +303,29 @@ def deviation_ratio(u, h, V, dt):
 
 print("Complete")
 
-
 # %%
-dt = pd.read_excel(r'/Users/binglianluo/Desktop/Spring2022/Practicum/TSLA1.xlsx')
-S0 = 918.4
-t = mkt_time('2022-01-25', '2022-01-28')
-dt = dt[dt["Strike"] / S0 >= 0.7]
-dt = dt[dt["Strike"] / S0 <= 1.3]
+date_list = list(pd.read_excel(r'/Users/binglianluo/Desktop/Spring2022/Practicum/date_list.xlsx', header=None)[0])
+date = date_list[12]
+dt = pd.read_excel(r'/Users/binglianluo/Desktop/Spring2022/Practicum/TSLA2022.xlsx', sheet_name=date)
+
+# Remove bid = ask
+dt['Check'] = (dt['Bid'] == dt['Ask'])
+dt = dt[~dt['Check'].isin([True])]
 dt = dt.reset_index(drop=True)
 
-# V = np.array(pd.read_excel('V.xlsx', header = None))[:,0]
+S0 = 918.4
+t = mkt_time('2022-01-25', date)
+r = 0.02
+F = S0 * np.exp(r * t)
+
+dt["Normalized"] = np.log(dt["Strike"] / S0) / (np.sqrt(t))
+dt = dt[dt["Normalized"] >= -1.5]
+dt = dt[dt["Normalized"] <= 2]
+dt = dt.reset_index(drop=True)
+
 K = np.append(0, dt['Strike'])
 K = np.append(K, 10000)
 V = np.zeros(len(dt['Strike']))
-# V = np.ones(len(dt['Strike']))*0.000001
 u = 0
 h = 0
 
@@ -329,6 +338,7 @@ sigma = (loss_func(S0, t, dt['Strike'], dt['Mid']) * np.sqrt(t))[0]
 dt = dt / S0
 sigma = sigma / S0
 K = K / S0
+dt['Normalized'] = dt['Normalized'] * S0
 S0 = 1
 
 c_bid = dt['Bid']
@@ -352,7 +362,7 @@ h_l = []
 g1_l = []
 r_l = []
 start_time0 = time.time()
-for i in range(0, 5000):
+for i in range(0, 10):
     start_time = time.time()
 
     # Update u
@@ -363,9 +373,11 @@ for i in range(0, 5000):
     h = solve_Ih1(V)[0]
     h_l.append(h)
 
+
     # Update V
     def min_g1(V):
         return g1(u, h, V)
+
 
     res = minimize(min_g1, V, method='L-BFGS-B')
     V = res.x
@@ -381,20 +393,20 @@ for i in range(0, 5000):
     r_l.append(r)
 
     print("Iteration %s --- %s seconds ---" % (i + 1, time.time() - start_time))
-    print("G1 = ", func_val)
-    print("u = %s , h = %s" % (u, h))
+    # print("G1 = ", func_val)
+    # print("u = %s , h = %s" % (u, h))
     print("Deviation ratio = ", r)
 
     # Bid/Ask test
-    c_model = call_price(u, h, V)
-    if curve_arbfree(c_bid, c_ask, c_model):
-        print("Arb-free at %s iteration" % (i + 1))
-        break
+    # c_model = call_price(u, h, V)
+    # if curve_arbfree(c_bid, c_ask, c_model):
+    #     print("Arb-free at %s iteration" % (i + 1))
+    #     break
 
     # Deviation Ratio Test
-    if r <= 0.05:
-        print("Satisfy fitness at %s iteration" % (i + 1))
-        break
+    # if r <= 0.05:
+    #     print("Satisfy fitness at %s iteration" % (i + 1))
+    #     break
 
     # Convergence Test
     if (i >= 1) and (abs(g1_l[i] - g1_l[i - 1]) <= 10 ** (-10)):
@@ -403,7 +415,6 @@ for i in range(0, 5000):
     # print(np.round(V, 6))
 
 print("Total time is %s seconds ---" % (time.time() - start_time0))
-
 
 # %% Quasi Newton
 D = np.eye(len(dt['Strike']))
@@ -485,7 +496,7 @@ for i in range(0, 1):
     print("u = %s , h = %s" % (u, h))
     print(np.round(V, 6))
 
-# %%
+# %% Time Computation
 start_time = time.time()
 g1(u, h, V)
 print("--- %s seconds ---" % (time.time() - start_time))
@@ -525,8 +536,8 @@ plt.scatter(dt1['Strike'], dt1['Model_IV'], c='crimson', marker='X', s=15)
 # plt.scatter(dt1['Strike'], dt1['Model1_IV'], c='crimson', marker='x', s=10)
 # plt.scatter(dt1['Strike'], dt1['Model2_IV'], c='limegreen', marker='x', s=10)
 # plt.scatter(dt1['Strike'], dt1['Model3_IV'], c='pink', marker='x', s=10)
-plt.xlim(1.2, 1.3)
-plt.ylim(0.92, 1)
+# plt.xlim(1.2, 1.3)
+# plt.ylim(0.92, 1)
 plt.legend(labels=['Ask', 'Bid', 'Mid', 'Model'])
 plt.title("TSLA1, Mat = 3 Days")
 plt.xlabel('Strike')
@@ -545,7 +556,6 @@ plt.xlim(1.2, 1.3)
 plt.xlabel('Moneyness')
 plt.ylabel('Market Call Price')
 plt.show()
-
 
 # %% Calculate Normalized Strike
 dt = pd.read_excel(r'/Users/binglianluo/Desktop/Spring2022/Practicum/T5.xlsx')
@@ -570,3 +580,23 @@ print("Maturity = ", t * 252)
 print("K = [%s, %s]" % (dt.loc[0, "Strike"], dt.loc[len(dt) - 1, "Strike"]))
 print("K/S0 = [%s, %s]" % (round(dt.loc[0, "Strike"] / S0, 1), round(dt.loc[len(dt) - 1, "Strike"] / S0, 1)))
 print("Range = [%s, %s]" % (round(dt.loc[0, "Normalized"], 1), round(dt.loc[len(dt) - 1, "Normalized"], 1)))
+# %%
+pd.options.mode.chained_assignment = None
+d_plot = dt[['Normalized', 'Model_IV']]
+d_plot['Maturity'] = t
+d_plot.to_excel('plot3.xlsx', index=None)
+
+
+# %%
+from openpyxl import load_workbook
+
+path = r'/Users/binglianluo/Desktop/Spring2022/Practicum/Model.xlsx'
+
+book = load_workbook(path)
+writer = pd.ExcelWriter(path, engine='openpyxl')
+writer.book = book
+
+d = dt[['Strike', 'Bid', 'Ask', 'Model', 'Normalized']]
+d.to_excel(writer, sheet_name=date, index=None)
+
+writer.save()
