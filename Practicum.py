@@ -69,7 +69,7 @@ def mkt_time(t1, t2):
     nyse = mcal.get_calendar('NYSE')
     early = nyse.schedule(start_date=t1, end_date=t2)
     t = mcal.date_range(early, frequency='1D')
-    return (len(t) + 1) / 252
+    return (len(t) - 1) / 252
 
 
 # Iu Calculation
@@ -305,8 +305,10 @@ print("Complete")
 
 # %%
 date_list = list(pd.read_excel(r'/Users/binglianluo/Desktop/Spring2022/Practicum/date_list.xlsx', header=None)[0])
-date = date_list[12]
+date = date_list[0]
 dt = pd.read_excel(r'/Users/binglianluo/Desktop/Spring2022/Practicum/TSLA2022.xlsx', sheet_name=date)
+# date = '2016-10-28'
+# dt = pd.read_excel(r'/Users/binglianluo/Desktop/Spring2022/Practicum/GOOGLtest1.xlsx', sheet_name=date)
 
 # Remove bid = ask
 dt['Check'] = (dt['Bid'] == dt['Ask'])
@@ -315,6 +317,8 @@ dt = dt.reset_index(drop=True)
 
 S0 = 918.4
 t = mkt_time('2022-01-25', date)
+# S0 = 828.55
+# t = mkt_time('2016-10-25', date)
 r = 0.02
 F = S0 * np.exp(r * t)
 
@@ -404,14 +408,14 @@ for i in range(0, 10):
     #     break
 
     # Deviation Ratio Test
-    # if r <= 0.05:
-    #     print("Satisfy fitness at %s iteration" % (i + 1))
-    #     break
+    if r <= 0.05:
+        print("Satisfy fitness at %s iteration" % (i + 1))
+        break
 
     # Convergence Test
-    if (i >= 1) and (abs(g1_l[i] - g1_l[i - 1]) <= 10 ** (-10)):
-        print("Convergence at %s iteration" % (i + 1))
-        break
+    # if (i >= 1) and (abs(g1_l[i] - g1_l[i - 1]) <= 10 ** (-10)):
+    #     print("Convergence at %s iteration" % (i + 1))
+    #     break
     # print(np.round(V, 6))
 
 print("Total time is %s seconds ---" % (time.time() - start_time0))
@@ -502,18 +506,36 @@ g1(u, h, V)
 print("--- %s seconds ---" % (time.time() - start_time))
 
 # %% Iteration Visualization
-plt.plot(r_l)
-plt.legend("r")
-plt.xlabel('Iteration')
-plt.ylabel('Deviation Ratio')
-plt.title("TSLA1, Mat = 3 days")
+plt.plot(h_l)
+# plt.legend("DR")
+plt.xlabel('Iteration', fontsize=15)
+plt.ylabel('h', fontsize=15)
+plt.title("Value of h", fontsize=15)
+plt.xticks(fontsize=12)
+plt.yticks(fontsize=12)
 plt.show()
-
-# pd.DataFrame(V).to_excel('DE_V.xlsx')
-
-
+#%%
+S1_list = np.linspace(S0 - 3 * sigma, S0 + 3 * sigma, 500)
+#S1_list=dt['Strike']
+m0_list = norm.pdf(S1_list, S0, sigma)
+expo = np.zeros(len(S1_list))
+for i in range(len(S1_list)):
+    expo[i] = - u - h * (S1_list[i] - S0)
+    for k in range(len(dt['Strike'])):
+        if S1_list[i]>dt['Strike'][k]:
+            expo[i] -= V[k]*(S1_list[i]-dt['Strike'][k])
+new_pdf_list = m0_list*np.exp(expo)
+plt.plot(S1_list,m0_list)
+plt.scatter(S1_list,new_pdf_list,c='r',s=3)
+plt.legend(labels=['m0', 'P*'])
+plt.title('Probability Measure without Stopping Criteria')
+plt.show()
 # %% Model visualization
 dt['Model'] = call_price(u, h, V)
+# dt['Model'] = call_price(0, 0, np.zeros(len(V)))
+# dt = dt[dt["Strike"] >= 0.7]
+# dt = dt[dt["Strike"] <= 1.23]
+# dt = dt.reset_index(drop=True)
 # dt['Model1'] = call_price(u1, h1, V1)
 # dt['Model2'] = call_price(u2, h2, V2)
 # dt['Model3'] = call_price(u3, h3, V3)
@@ -536,23 +558,44 @@ plt.scatter(dt1['Strike'], dt1['Model_IV'], c='crimson', marker='X', s=15)
 # plt.scatter(dt1['Strike'], dt1['Model1_IV'], c='crimson', marker='x', s=10)
 # plt.scatter(dt1['Strike'], dt1['Model2_IV'], c='limegreen', marker='x', s=10)
 # plt.scatter(dt1['Strike'], dt1['Model3_IV'], c='pink', marker='x', s=10)
-# plt.xlim(1.2, 1.3)
-# plt.ylim(0.92, 1)
+# plt.xlim(0.7, 1.25)
+# plt.ylim(0.5, 0.8)
 plt.legend(labels=['Ask', 'Bid', 'Mid', 'Model'])
-plt.title("TSLA1, Mat = 3 Days")
-plt.xlabel('Strike')
-plt.ylabel('Implied Volatility')
+plt.title("TSLA Implied Volatility, 3 Days", fontsize=15)
+plt.xlabel('Strike', fontsize=15)
+plt.ylabel('Implied Volatility', fontsize=15)
+plt.xticks(fontsize=12)
+plt.yticks(fontsize=12)
 plt.show()
 
+#%%
+dt1 = dt[~dt['Mid_IV'].isin([0])]
+dt1.loc[30,'Strike'] = 0.6
+plt.scatter(dt1['Strike'], dt1['Mid_IV'], c='b', marker='o', s=10)
+# plt.plot(dt1['Strike'], dt1['Mid_IV'], c='grey', linewidth=1)
+plt.xlim(0.8, 1.2)
+plt.ylim(0.5, 0.8)
+plt.xticks(fontsize=12)
+plt.yticks(fontsize=12)
 
+
+plt.title("Mexican Hat-Shaped Implied Volatility, GOOGL", fontsize=15)
+plt.xlabel('Strike', fontsize=15)
+plt.ylabel('Implied Volatility', fontsize=15)
+plt.show()
+#%%
+def deviation_ratio(c_mid, c_model, c_ask, c_bid):
+    sum_value = np.sum(np.abs(np.array(c_mid) - np.array(c_model)) / (np.array(c_ask) - np.array(c_bid)) / len(c_mid))
+    return sum_value
+print(deviation_ratio(dt['Mid_IV'], dt['Model_IV'], dt['Ask_IV'], dt['Bid_IV']))
 # %% Call Price Visualization
 plt.scatter(dt1['Strike'], dt1['Ask'], c='blue', marker='o', s=10)
 plt.scatter(dt1['Strike'], dt1['Bid'], c='orange', marker='^', s=10)
 plt.plot(dt1['Strike'], dt1['Mid'], c='purple')
 plt.legend(labels=['Ask', 'Bid', 'Mid'])
 plt.title("TSLA1, Mat = 3 Days")
-plt.ylim(0.0015, 0.006)
-plt.xlim(1.2, 1.3)
+# plt.ylim(0.0015, 0.006)
+plt.xlim(1.5, 2.5)
 plt.xlabel('Moneyness')
 plt.ylabel('Market Call Price')
 plt.show()
@@ -580,23 +623,19 @@ print("Maturity = ", t * 252)
 print("K = [%s, %s]" % (dt.loc[0, "Strike"], dt.loc[len(dt) - 1, "Strike"]))
 print("K/S0 = [%s, %s]" % (round(dt.loc[0, "Strike"] / S0, 1), round(dt.loc[len(dt) - 1, "Strike"] / S0, 1)))
 print("Range = [%s, %s]" % (round(dt.loc[0, "Normalized"], 1), round(dt.loc[len(dt) - 1, "Normalized"], 1)))
-# %%
-pd.options.mode.chained_assignment = None
-d_plot = dt[['Normalized', 'Model_IV']]
-d_plot['Maturity'] = t
-d_plot.to_excel('plot3.xlsx', index=None)
 
 
 # %%
 from openpyxl import load_workbook
 
-path = r'/Users/binglianluo/Desktop/Spring2022/Practicum/Model.xlsx'
+path = r'/Users/binglianluo/Desktop/Spring2022/Practicum/Model2.xlsx'
 
 book = load_workbook(path)
 writer = pd.ExcelWriter(path, engine='openpyxl')
 writer.book = book
 
-d = dt[['Strike', 'Bid', 'Ask', 'Model', 'Normalized']]
+d = dt[['Strike', 'Bid', 'Ask', 'Mid', 'Model', 'Normalized']]
 d.to_excel(writer, sheet_name=date, index=None)
 
 writer.save()
+
